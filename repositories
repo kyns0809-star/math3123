@@ -9,17 +9,20 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
+# =========================
+# 1) (예시) 데이터 생성
+# =========================
 def make_fake_data(n=2000, seed=42):
     rng = np.random.default_rng(seed)
 
-    study_hours = rng.uniform(0, 25, size=n)          
-    attendance  = rng.uniform(50, 100, size=n)      
-    sleep_hours = rng.uniform(3, 9, size=n)           
-    prev_score  = rng.uniform(0, 100, size=n)        수
-    tutoring    = rng.integers(0, 2, size=n)         
-    stress      = rng.uniform(0, 10, size=n)          
+    study_hours = rng.uniform(0, 25, size=n)          # 공부 시간 (0~25시간/주)
+    attendance  = rng.uniform(50, 100, size=n)        # 출석률 (50~100%)
+    sleep_hours = rng.uniform(3, 9, size=n)           # 평균 수면 (3~9시간/일)
+    prev_score  = rng.uniform(0, 100, size=n)         # 이전 시험 점수
+    tutoring    = rng.integers(0, 2, size=n)          # 과외 여부(0/1)
+    stress      = rng.uniform(0, 10, size=n)          # 스트레스(0~10)
 
-   
+    # 점수 생성 (현실적으로 보이도록 가중치 + 노이즈)
     noise = rng.normal(0, 6, size=n)
     score = (
         2.2 * study_hours
@@ -31,7 +34,7 @@ def make_fake_data(n=2000, seed=42):
         + noise
     )
 
-   
+    # 0~100으로 클립
     score = np.clip(score, 0, 100)
 
     df = pd.DataFrame({
@@ -48,7 +51,9 @@ def make_fake_data(n=2000, seed=42):
 df = make_fake_data(n=2500)
 print(df.head())
 
-
+# =========================
+# 2) 학습/테스트 분리
+# =========================
 X = df.drop(columns=["score"]).values
 y = df["score"].values
 
@@ -56,12 +61,16 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
-
+# =========================
+# 3) 스케일링 (딥러닝에 중요)
+# =========================
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled  = scaler.transform(X_test)
 
-
+# =========================
+# 4) 딥러닝 모델 구성 (회귀)
+# =========================
 model = keras.Sequential([
     layers.Input(shape=(X_train_scaled.shape[1],)),
     layers.Dense(64, activation="relu"),
@@ -77,7 +86,9 @@ model.compile(
     metrics=["mae"]
 )
 
-
+# =========================
+# 5) 학습 (조기 종료)
+# =========================
 early_stop = keras.callbacks.EarlyStopping(
     monitor="val_loss",
     patience=15,
@@ -93,7 +104,9 @@ history = model.fit(
     verbose=1
 )
 
-
+# =========================
+# 6) 평가
+# =========================
 pred = model.predict(X_test_scaled).flatten()
 
 mae = mean_absolute_error(y_test, pred)
@@ -105,14 +118,16 @@ print(f"MAE  : {mae:.3f}")
 print(f"RMSE : {rmse:.3f}")
 print(f"R^2  : {r2:.3f}")
 
-
+# =========================
+# 7) 새 입력 예측 함수
+# =========================
 def predict_score(study_hours, attendance, sleep_hours, prev_score, tutoring, stress):
     x = np.array([[study_hours, attendance, sleep_hours, prev_score, tutoring, stress]], dtype=float)
     x_scaled = scaler.transform(x)
     y_pred = model.predict(x_scaled).item()
     return float(np.clip(y_pred, 0, 100))
 
-
+# 예시 예측
 example = predict_score(
     study_hours=12,
     attendance=95,
