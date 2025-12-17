@@ -1,0 +1,124 @@
+import numpy as np
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+
+def make_fake_data(n=2000, seed=42):
+    rng = np.random.default_rng(seed)
+
+    study_hours = rng.uniform(0, 25, size=n)          
+    attendance  = rng.uniform(50, 100, size=n)      
+    sleep_hours = rng.uniform(3, 9, size=n)           
+    prev_score  = rng.uniform(0, 100, size=n)        수
+    tutoring    = rng.integers(0, 2, size=n)         
+    stress      = rng.uniform(0, 10, size=n)          
+
+   
+    noise = rng.normal(0, 6, size=n)
+    score = (
+        2.2 * study_hours
+        + 0.35 * attendance
+        + 1.5 * sleep_hours
+        + 0.45 * prev_score
+        + 4.0 * tutoring
+        - 1.2 * stress
+        + noise
+    )
+
+   
+    score = np.clip(score, 0, 100)
+
+    df = pd.DataFrame({
+        "study_hours": study_hours,
+        "attendance": attendance,
+        "sleep_hours": sleep_hours,
+        "prev_score": prev_score,
+        "tutoring": tutoring,
+        "stress": stress,
+        "score": score
+    })
+    return df
+
+df = make_fake_data(n=2500)
+print(df.head())
+
+
+X = df.drop(columns=["score"]).values
+y = df["score"].values
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled  = scaler.transform(X_test)
+
+
+model = keras.Sequential([
+    layers.Input(shape=(X_train_scaled.shape[1],)),
+    layers.Dense(64, activation="relu"),
+    layers.Dropout(0.15),
+    layers.Dense(64, activation="relu"),
+    layers.Dropout(0.15),
+    layers.Dense(1)  # 회귀: 마지막은 활성화 없음(선형)
+])
+
+model.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+    loss="mse",
+    metrics=["mae"]
+)
+
+
+early_stop = keras.callbacks.EarlyStopping(
+    monitor="val_loss",
+    patience=15,
+    restore_best_weights=True
+)
+
+history = model.fit(
+    X_train_scaled, y_train,
+    validation_split=0.2,
+    epochs=300,
+    batch_size=32,
+    callbacks=[early_stop],
+    verbose=1
+)
+
+
+pred = model.predict(X_test_scaled).flatten()
+
+mae = mean_absolute_error(y_test, pred)
+rmse = np.sqrt(mean_squared_error(y_test, pred))
+r2 = r2_score(y_test, pred)
+
+print("\n=== Test Evaluation ===")
+print(f"MAE  : {mae:.3f}")
+print(f"RMSE : {rmse:.3f}")
+print(f"R^2  : {r2:.3f}")
+
+
+def predict_score(study_hours, attendance, sleep_hours, prev_score, tutoring, stress):
+    x = np.array([[study_hours, attendance, sleep_hours, prev_score, tutoring, stress]], dtype=float)
+    x_scaled = scaler.transform(x)
+    y_pred = model.predict(x_scaled).item()
+    return float(np.clip(y_pred, 0, 100))
+
+
+example = predict_score(
+    study_hours=12,
+    attendance=95,
+    sleep_hours=7,
+    prev_score=78,
+    tutoring=1,
+    stress=4
+)
+print(f"\n예측 점수: {example:.2f}")
